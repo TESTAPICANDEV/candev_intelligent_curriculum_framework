@@ -118,6 +118,20 @@ interdependencies <- lapply(term_list, function(x) {
 })
 names(interdependencies) <- term_list
 
+apply_thesaurus <- function(str_vect) {
+  lapply(str_vect, function(x) {
+    synonyms <- lapply(names(interdependencies), function(y) {
+      if (str_detect(x, y)) {
+        return(paste(interdependencies[[y]], collapse = ' '))
+      }
+      ''
+    }) %>%
+      paste(collapse = '')
+    paste(x, synonyms)
+  }) %>%
+    unlist()
+}
+
 #####
 # UI
 #####
@@ -140,7 +154,8 @@ ui <- shinyUI(fluidPage(
       checkboxInput("exclude_checks", "Only include courses without specific tags?"),
       conditionalPanel("input.exclude_checks",
                        checkboxGroupInput("exclude_checklist", NULL, checkbox_cols)),
-      actionButton("filter", "Filter data")
+      actionButton("filter", "Filter data"),
+      downloadButton("dl", "Download data")
     ),
     
     mainPanel(
@@ -155,6 +170,11 @@ ui <- shinyUI(fluidPage(
           actionButton("model", "Perform LDA modelling"),
           tableOutput("lda_model"),
           tableOutput("lda_model_thesaurus")
+        ),
+        tabPanel("Searching",
+                 textInput("search_term", "Search term"),
+                 checkboxInput("include_thesaurus", "Include thesaurus"),
+                 downloadHandler("search_dl", "Filter to search term and download"))
         )
       )
     )
@@ -184,11 +204,11 @@ server <- function(input, output) {
       filter(str_sub(`Duration HH:MM:SS`, 1, 2) <= double_digit_num(input$max_duration))
     if (input$include_checks & !is.null(input$include_checklist)) {
       not_in_checklist <- checkbox_cols[!(checkbox_cols %in% input$include_checklist)]
-      filtered_metadata <- select(-not_in_checklist)
+      filtered_metadata <- filtered_metadata[, !(names(filtered_metadata) %in% not_in_checklist)]
     }
     if (input$exclude_checks & !is.null(input$exclude_checklist)) {
       in_checklist <- checkbox_cols[checkbox_cols %in% input$exclude_checklist]
-      filtered_metadata <- select(-in_checklist)
+      filtered_metadata <- filtered_metadata[, !(names(filtered_metadata) %in% in_checklist)]
     }
     
     output$sample_table <- renderTable(filtered_metadata[input$init_row:(input$init_row + 10),
@@ -264,17 +284,7 @@ server <- function(input, output) {
                    "simple description EN/description simple ang")
     model_data <- select(sample_metadata, id = `title EN/Titre EN`,
                          desc = desc)[2:nrow(sample_metadata), ]
-    model_data$desc <- lapply(model_data$desc, function(x) {
-      synonyms <- lapply(names(interdependencies), function(y) {
-        if (str_detect(x, y)) {
-          return(paste(interdependencies[[y]], collapse = ' '))
-        }
-        ''
-      }) %>%
-        paste(collapse = '')
-      paste(x, synonyms)
-    }) %>%
-      unlist()
+    model_data$desc <- apply_thesaurus(model_data$desc)
     model_data <- unnest_tokens(model_data, word, desc)
     model_data$word <- str_replace_all(model_data$word, "[[:digit:]]+", "") %>%
       str_replace_all("[[:punct:]]+", "")
@@ -348,6 +358,15 @@ server <- function(input, output) {
       dev.off()
     }
   })
+  
+  output$dl <- downloadHandler(
+    filename = function() {
+      "filtered_data.csv"
+    },
+    content = function(file) {
+      filtered_data()
+    }
+  )
 }
 
 

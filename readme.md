@@ -19,19 +19,18 @@ C) Data analyzing through the LDA model - done
 5. Gather a list of all course names as the domain for the LDA model.
 6. Create an algorithm implementing the LDA model on a character vector of the descriptions.
 7. Run the LDA model on the character vector of the descriptions, with all translations appended with a lower weighting.
-8. Search for course names that have a high value in the LDA model for *other* courses.
 
 D) Finding good course groupings for a curriculum
-9. Find the terms that it should be tagged by.
-10. Create the minimum list of courses that covers all terms that have been tagged (from the filtered data).
+8. Find the terms that it should be tagged by.
+9. Create the minimum list of courses that covers all terms that have been tagged (from the filtered data).
 - First use the course that covers the most tags, then the course that covers the most remaining tags, and so on.
 - Check for prerequisites. 
 
 E) Create a search function
-11. Search existing courses by tags. (Searching for a tag will output courses with it)
-12. Search existing courses by tags, including similar terms.
+10. Search existing courses by tags. (Searching for a tag will output courses with it)
+11. Search existing courses by tags, including similar terms.
 
 F) Download feature
-13. Download the analysis.
+12. Download the analysis.
 
 Credits to https://towardsdatascience.com/beginners-guide-to-lda-topic-modelling-with-r-e57a5a8e7a25 for helping with writing out the LDA model.
