@@ -28,6 +28,7 @@ windows_1252_to_utf8_table <- function(tabl) {
 # Read in data
 metadata <- read_csv(file.path(getwd(), "GcCampus metadata.csv"), skip = 1) %>%
   windows_1252_to_utf8_table()
+metadata <- metadata[-1, ]
 catalogue <- read_csv(file.path(getwd(), "catalogue.csv")) %>%
   windows_1252_to_utf8_table()
 translations <- read_csv(file.path(getwd(), "CST20160704.csv"),
@@ -85,9 +86,6 @@ checkbox_cols <- lapply(metadata, function(tabl_col) {
 # Get list of course names
 course_names <- metadata$`title EN/Titre EN`[2:length(metadata$`title EN/Titre EN`)] %>%
   unique()
-
-sample_metadata <- metadata[1:10, ]
-sample_course_names <- course_names[1:10]
 
 #####
 # List interdependencies
@@ -172,9 +170,16 @@ ui <- shinyUI(fluidPage(
           tableOutput("lda_model_thesaurus")
         ),
         tabPanel("Searching",
-                 textInput("search_term", "Search term"),
+                 textInput("search_term", "Term to search for"),
+                 selectInput("search_col", "Column to search in", colnames(metadata)),
                  checkboxInput("include_thesaurus", "Include thesaurus"),
-                 downloadHandler("search_dl", "Filter to search term and download"))
+                 downloadHandler("search_dl", "Filter to search term and download"),
+                 tableOutput("sample_search")
+        ),
+        tabPanel("Curriculum",
+                 checkboxGroupInput("fields", "Which fields should be covered?", checkbox_cols),
+                 actionButton("gather_fields", "Gather curriculum for fields"),
+                 tableOutput("course_listing")
         )
       )
     )
@@ -204,11 +209,10 @@ server <- function(input, output) {
       filter(str_sub(`Duration HH:MM:SS`, 1, 2) <= double_digit_num(input$max_duration))
     if (input$include_checks & !is.null(input$include_checklist)) {
       not_in_checklist <- checkbox_cols[!(checkbox_cols %in% input$include_checklist)]
-      filtered_metadata <- filtered_metadata[, !(names(filtered_metadata) %in% not_in_checklist)]
+      filtered_metadata <- filtered_metadata[apply(filtered_metadata[input$include_checklist], 1, function(r) any(!is.na(r))), ]
     }
     if (input$exclude_checks & !is.null(input$exclude_checklist)) {
-      in_checklist <- checkbox_cols[checkbox_cols %in% input$exclude_checklist]
-      filtered_metadata <- filtered_metadata[, !(names(filtered_metadata) %in% in_checklist)]
+      filtered_metadata <- filtered_metadata[apply(filtered_metadata[input$exclude_checklist], 1, function(r) !any(!is.na(r))), ]
     }
     
     output$sample_table <- renderTable(filtered_metadata[input$init_row:(input$init_row + 10),
@@ -367,6 +371,56 @@ server <- function(input, output) {
       filtered_data()
     }
   )
+  
+  filtered_searched_data <- reactiveVal()
+  
+  observe({
+    searched_data <- filtered_data()
+    if (input$include_thesaurus) {
+      searched_data[[input$search_col]] <- apply_thesaurus(searched_data[[input$search_col]])
+    }
+    filtering_searched_data <- searched_data[str_detect(str_to_lower(pull(searched_data,
+                                                                     input$search_col)),
+                                                        input$search_term), ]
+    output$sample_search <- renderTable({
+      filtering_searched_data[1:10, unique(c("title EN/Titre EN",
+                                             "simple description EN/description simple ang",
+                                             input$search_col))]
+    })
+    filtered_searched_data(filtering_searched_data)
+  })
+  
+  output$search_dl <- downloadHandler(
+    filename = function() {
+      "filtered_data.csv"
+    },
+    content = function(file) {
+      filtered_searched_data()
+    }
+  )
+  
+  observeEvent(input$gather_fields, {
+    needed_checks <- c("title EN/Titre EN", input$fields)
+    curr_checks <- c()
+    curr_courses <- c()
+    curr_row <- 1
+    checkbox_cols_table <- select(filtered_data(), `title EN/Titre EN`, input$fields)
+    while (!all(needed_checks %in% curr_checks) & curr_row < nrow(filtered_data())) {
+      curr_row_data <- checkbox_cols_table[curr_row, ] %>%
+        unlist()
+      existing_cols <- names(curr_row_data[!is.na(curr_row_data)])
+      new_curr_checks <- unique(c(curr_checks, existing_cols))
+      if (length(new_curr_checks) > length(curr_checks)) {
+        curr_courses <- c(curr_courses, unname(curr_row_data[1]))
+        curr_checks <- new_curr_checks
+      }
+      curr_row <- curr_row + 1
+    }
+    output$course_listing <- renderTable({
+      filter(filtered_data(), `title EN/Titre EN` %in% curr_courses)[, unique(c("title EN/Titre EN",
+                                                                                "simple description EN/description simple ang"))]
+    })
+  })
 }
 
 
